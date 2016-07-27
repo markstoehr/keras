@@ -656,7 +656,7 @@ class LSTM(Recurrent):
                  forget_bias_init='one', activation='tanh',
                  inner_activation='hard_sigmoid',
                  W_regularizer=None, U_regularizer=None, b_regularizer=None,
-                 dropout_W=0., dropout_U=0., **kwargs):
+                 dropout_W=0., dropout_U=0., share_lstm=None, **kwargs):
         self.output_dim = output_dim
         self.init = initializations.get(init)
         self.inner_init = initializations.get(inner_init)
@@ -667,7 +667,7 @@ class LSTM(Recurrent):
         self.U_regularizer = regularizers.get(U_regularizer)
         self.b_regularizer = regularizers.get(b_regularizer)
         self.dropout_W, self.dropout_U = dropout_W, dropout_U
-
+        self.share_lstm = share_lstm
         if self.dropout_W or self.dropout_U:
             self.uses_learning_phase = True
         super(LSTM, self).__init__(**kwargs)
@@ -694,6 +694,28 @@ class LSTM(Recurrent):
                                            np.zeros(self.output_dim))),
                                 name='{}_b'.format(self.name))
             self.trainable_weights = [self.W, self.U, self.b]
+        elif self.share_lstm:
+            self.W_i = self.share_lstm.W_i
+            self.U_i = self.share_lstm.U_i 
+            self.b_i = self.share_lstm.b_i 
+            self.W_f = self.share_lstm.W_f 
+            self.U_f = self.share_lstm.U_f
+            self.b_f = self.share_lstm.b_f
+            self.W_c = self.share_lstm.W_c
+            self.U_c = self.share_lstm.U_c
+            self.b_c = self.share_lstm.b_c
+            self.W_o = self.share_lstm.W_o
+            self.U_o = self.share_lstm.U_o
+            self.b_o = self.share_lstm.b_o
+    
+            self.trainable_weights = [self.W_i, self.U_i, self.b_i,
+                                      self.W_c, self.U_c, self.b_c,
+                                      self.W_f, self.U_f, self.b_f,
+                                      self.W_o, self.U_o, self.b_o]
+            
+            self.W = K.concatenate([self.W_i, self.W_f, self.W_c, self.W_o])
+            self.U = K.concatenate([self.U_i, self.U_f, self.U_c, self.U_o])
+            self.b = K.concatenate([self.b_i, self.b_f, self.b_c, self.b_o])
         else:
             self.W_i = self.init((self.input_dim, self.output_dim),
                                  name='{}_W_i'.format(self.name))
@@ -743,7 +765,7 @@ class LSTM(Recurrent):
         if self.initial_weights is not None:
             self.set_weights(self.initial_weights)
             del self.initial_weights
-
+            
     def reset_states(self):
         assert self.stateful, 'Layer must be stateful.'
         input_shape = self.input_spec[0].shape
